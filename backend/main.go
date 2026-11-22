@@ -485,6 +485,10 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		result := "invalid_request"
+		defer func() {
+			bizMetrics.CheckoutAttempts.WithLabelValues(result).Inc()
+		}()
 		ctx, span := tracer.Start(r.Context(), "checkout.process")
 		defer span.End()
 
@@ -532,6 +536,7 @@ func main() {
 		// Списываем остатки по каждому товару корзины. Если товара не хватает —
 		// заказ НЕ создаётся (в отличие от payment-флоу, где заказ сохраняется
 		// всегда): отвечаем 409 с отдельной метрикой.
+		result = "checkout_error"
 		reserveCtx, reserveSpan := tracer.Start(ctx, "inventory.reserve")
 		reserved, err := reserveInventory(reserveCtx, db, pricedItems, requestID)
 		reserveSpan.End()
@@ -539,6 +544,7 @@ func main() {
 			if errors.Is(err, store.ErrInsufficientStock) {
 				bizMetrics.OrdersBlockedByStock.Inc()
 				reserveSpan.SetStatus(codes.Error, "insufficient stock")
+				result = "out_of_stock"
 				log.Warn("order_blocked_low_stock",
 					"request_id", requestID)
 				http.Error(w, "insufficient stock", http.StatusConflict)
@@ -623,6 +629,14 @@ func main() {
 			log.Error("failed to save order", "request_id", requestID, "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+		switch {
+		case status == "paid":
+			result = "paid"
+		case failureReason == "card_declined":
+			result = "card_declined"
+		default:
+			result = "payment_service_unavailable"
 		}
 
 		w.Header().Set("Content-Type", "application/json")

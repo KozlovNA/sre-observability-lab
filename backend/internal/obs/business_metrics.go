@@ -15,11 +15,12 @@ import (
 // BusinessMetrics хранит бизнес-счётчики пользователей/склада/отзывов.
 type BusinessMetrics struct {
 	// Пользователи и сессии.
-	UserLogins     prometheus.Counter
-	UserLogouts    prometheus.Counter
-	ActiveSessions prometheus.Gauge
-	UserActions    *prometheus.CounterVec // by action (не по user_id!)
-	AdminDenied    prometheus.Counter
+	UserLogins       prometheus.Counter
+	UserLogouts      prometheus.Counter
+	ActiveSessions   prometheus.Gauge
+	UserActions      *prometheus.CounterVec // by action (не по user_id!)
+	AdminDenied      prometheus.Counter
+	CheckoutAttempts *prometheus.CounterVec
 
 	// Склад.
 	OrdersBlockedByStock prometheus.Counter
@@ -64,12 +65,22 @@ func registerBM(c prometheus.Collector) {
 
 // NewBusinessMetrics создаёт и регистрирует бизнес-метрики.
 func NewBusinessMetrics() *BusinessMetrics {
+	checkoutAttempts := newCounterVec(
+		"checkout_attempts_total", "Checkout attempts by result.", "result",
+	)
+	for _, result := range []string{
+		"paid", "card_declined", "payment_service_unavailable",
+		"out_of_stock", "invalid_request", "checkout_error",
+	} {
+		checkoutAttempts.WithLabelValues(result)
+	}
 	return &BusinessMetrics{
 		UserLogins:           newCounter("user_logins_total", "Сколько раз пользователи вошли (вход по имени)."),
 		UserLogouts:          newCounter("user_logouts_total", "Сколько раз пользователи вышли."),
 		ActiveSessions:       newGauge("active_sessions", "Число активных in-memory сессий."),
 		UserActions:          newCounterVec("user_actions_total", "Действия пользователей по типу (ТОЛЬКО action, не user_id).", "action"),
 		AdminDenied:          newCounter("admin_denied_total", "Сколько раз не-админу отказано в доступе к админ-ручке."),
+		CheckoutAttempts:     checkoutAttempts,
 		OrdersBlockedByStock: newCounter("orders_blocked_by_stock_total", "Заказы, заблокированные нехваткой склада (409)."),
 		InventoryRestock:     newCounter("inventory_restock_total", "Восполнения остатков через админ-панель."),
 		OutOfStockEvents:     newCounter("out_of_stock_events_total", "События перехода товара в состояние 'нет в наличии'."),
