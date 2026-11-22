@@ -174,3 +174,45 @@ groups:
         annotations:
           title: "Конвейер алертинга жив"
           description: "Постоянно горящий алерт: пропажа его уведомлений означает поломку vmalert/Alertmanager."
+
+  - name: checkout
+    rules:
+      - alert: CheckoutPaymentsFailing
+        expr: |
+          (
+            sum(rate(backend_checkout_attempts_total{result="payment_service_unavailable"}[1m]))
+            /
+            clamp_min(sum(rate(backend_checkout_attempts_total[1m])), 1e-9)
+          ) > 0.5
+          and on() sum(increase(backend_checkout_attempts_total[1m])) >= 3
+        for: 10s
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "Больше половины попыток checkout падают из-за сбоев оплаты"
+      - alert: CheckoutZeroPurchases
+        expr: |
+          sum(increase(backend_checkout_attempts_total{result="paid"}[2m])) == 0
+          and on() sum(increase(backend_checkout_attempts_total{result!="invalid_request"}[2m])) >= 3
+        for: 0s
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "За две минуты ни одной покупки при наличии попыток"
+
+      - alert: CheckoutCardDeclinesHigh
+        expr: |
+          (
+            sum(rate(backend_checkout_attempts_total{result="card_declined"}[2m]))
+            /
+            clamp_min(sum(rate(backend_checkout_attempts_total[2m])), 1e-9)
+          ) > 0.7
+          and on() sum(increase(backend_checkout_attempts_total{result="card_declined"}[2m])) >= 5
+        for: 30s
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "Более 70 процентов попыток checkout закончились отказом карты"

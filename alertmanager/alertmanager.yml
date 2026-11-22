@@ -23,6 +23,11 @@ route:
       group_wait: 0s
       group_interval: 1m
       repeat_interval: 1m
+    - matchers: ['alertname=~"Checkout.*"', 'severity="critical"']
+      receiver: "oncall-webhook"
+
+    - matchers: ['alertname=~"Checkout.*"', 'severity="warning"']
+      receiver: "ticket-webhook"
 
 receivers:
   - name: "all-notifications"
@@ -40,6 +45,22 @@ receivers:
     webhook_configs:
       - url: "http://alertreceiver:9119/alert"
         send_resolved: false
+
+  - name: "oncall-webhook"
+    webhook_configs:
+      - url: "http://alertreceiver:9119/alert"
+        send_resolved: true
+    email_configs:
+      - to: "oncall@example.com"
+        send_resolved: true
+
+  - name: "ticket-webhook"
+    webhook_configs:
+      - url: "http://alertreceiver:9119/alert"
+        send_resolved: true
+    email_configs:
+      - to: "ticket@example.com"
+        send_resolved: true
 
 inhibit_rules:
   # 1. Если цель не скрейпится, остальные алерты этого сервиса бессмысленны
